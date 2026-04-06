@@ -35,29 +35,32 @@ STYLE_GUIDE = (
 CLAUDE_SYSTEM = """You are a visual communication expert who designs hand-drawn educational diagrams
 in the style of 'Wait But Why' or Tim Urban's sketches — simple, witty, and insightful.
 
-Your job is to read article text and design ONE clear visual concept that:
-1. Captures the CORE idea or analogy from the text
-2. Uses a relatable real-world metaphor (computers, buildings, nature, everyday objects)
-3. Can be expressed as a comparison, flow diagram, or analogy side-by-side
-4. Works as a hand-drawn sketch with labeled parts and a bottom caption
+Your job is to read article text and design FIVE distinct visual concepts that each
+illustrate a different angle, section, or key idea from the text. Each concept should:
+1. Capture a DIFFERENT core idea, analogy, or section from the article
+2. Use a relatable real-world metaphor (computers, buildings, nature, everyday objects)
+3. Use a DIFFERENT layout style so the set feels varied and rich
+4. Work as a hand-drawn sketch with labeled parts and a bottom caption
 
-Output ONLY a JSON object (no markdown fences) with these fields:
-{
-  "concept_title": "short title for the visual",
-  "visual_metaphor": "the core metaphor or analogy being illustrated",
-  "layout": "side-by-side comparison | flow diagram | single scene with annotations | hierarchy",
-  "elements": ["list", "of", "visual", "elements", "to", "draw"],
-  "labels": ["key", "labels", "and", "annotations"],
-  "caption": "The witty bottom caption summarizing the insight",
-  "dalle_prompt": "Complete, detailed DALL-E 3 prompt to generate this image"
-}
+Output ONLY a JSON array (no markdown fences) with exactly 5 objects, each having these fields:
+[
+  {
+    "concept_title": "short title for the visual",
+    "visual_metaphor": "the core metaphor or analogy being illustrated",
+    "layout": "side-by-side comparison | flow diagram | single scene with annotations | hierarchy | table/matrix",
+    "elements": ["list", "of", "visual", "elements", "to", "draw"],
+    "labels": ["key", "labels", "and", "annotations"],
+    "caption": "The witty bottom caption summarizing the insight",
+    "dalle_prompt": "Complete, detailed DALL-E 3 prompt to generate this image"
+  }
+]
 
-The dalle_prompt MUST:
-- Describe exact visual elements and their spatial positions
-- Specify the hand-drawn sketch aesthetic on cream paper
-- List all text labels to include in the image
-- Include the bottom caption verbatim
-- Be under 4000 characters
+IMPORTANT RULES:
+- Each of the 5 concepts must cover a DIFFERENT aspect of the article
+- Vary the layouts: use at least 3 different layout types across the 5
+- Each dalle_prompt must be self-contained and under 4000 characters
+- dalle_prompts must specify the hand-drawn sketch aesthetic on cream paper
+- Include all text labels and the bottom caption in each dalle_prompt
 """
 
 
@@ -74,24 +77,28 @@ def get_clients():
     return anthropic.Anthropic(api_key=anthropic_key), OpenAI(api_key=openai_key)
 
 
-def analyze_article(text: str, claude: anthropic.Anthropic) -> dict:
+def analyze_article(text: str, claude: anthropic.Anthropic) -> list[dict]:
+    """Ask Claude to design 5 distinct visual concepts for the article."""
     response = claude.messages.create(
         model="claude-opus-4-6",
-        max_tokens=2048,
+        max_tokens=8192,
         thinking={"type": "adaptive"},
         system=CLAUDE_SYSTEM,
         messages=[
             {
                 "role": "user",
-                "content": f"Design a hand-drawn educational illustration for this article:\n\n{text[:8000]}",
+                "content": f"Design 5 hand-drawn educational illustrations for this article:\n\n{text[:8000]}",
             }
         ],
     )
     raw = next(b.text for b in response.content if b.type == "text")
-    json_match = re.search(r"\{.*\}", raw, re.DOTALL)
+    json_match = re.search(r"\[.*\]", raw, re.DOTALL)
     if not json_match:
-        raise ValueError(f"Claude did not return valid JSON:\n{raw}")
-    return json.loads(json_match.group())
+        raise ValueError(f"Claude did not return valid JSON array:\n{raw}")
+    concepts = json.loads(json_match.group())
+    if not isinstance(concepts, list) or len(concepts) == 0:
+        raise ValueError("Claude returned an empty or invalid concept list")
+    return concepts[:5]
 
 
 def build_prompt(concept: dict) -> str:
@@ -145,28 +152,27 @@ def generate():
     try:
         claude, oai = get_clients()
 
-        # Step 1 — Claude designs the concept
-        concept = analyze_article(text, claude)
+        # Step 1 — Claude designs 5 visual concepts
+        concepts = analyze_article(text, claude)
 
-        # Step 2 — Build DALL-E prompt
-        prompt = build_prompt(concept)
-
-        # Step 3 — Generate image
-        url = generate_image(prompt, oai)
-
-        # Step 4 — Save locally
+        # Step 2–4 — Generate each image
+        results = []
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        slug = slugify(concept.get("concept_title", "image"))
-        filename = f"{ts}_{slug}.png"
-        download_image(url, OUTPUT_DIR / filename)
+        for i, concept in enumerate(concepts):
+            prompt = build_prompt(concept)
+            url = generate_image(prompt, oai)
+            slug = slugify(concept.get("concept_title", "image"))
+            filename = f"{ts}_{i+1}_{slug}.png"
+            download_image(url, OUTPUT_DIR / filename)
+            results.append(
+                {
+                    "concept": concept,
+                    "image_url": url,
+                    "local_file": f"/images/{filename}",
+                }
+            )
 
-        return jsonify(
-            {
-                "concept": concept,
-                "image_url": url,
-                "local_file": f"/images/{filename}",
-            }
-        )
+        return jsonify({"images": results})
 
     except EnvironmentError as e:
         return jsonify({"error": str(e)}), 500

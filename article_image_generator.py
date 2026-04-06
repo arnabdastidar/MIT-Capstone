@@ -36,60 +36,63 @@ similar to "wait but why" or "sketchplanations" illustration style
 CLAUDE_SYSTEM = """You are a visual communication expert who designs hand-drawn educational diagrams
 in the style of 'Wait But Why' or Tim Urban's sketches — simple, witty, and insightful.
 
-Your job is to read article text and design ONE clear visual concept that:
-1. Captures the CORE idea or analogy from the text
-2. Uses a relatable real-world metaphor (computers, buildings, nature, everyday objects)
-3. Can be expressed as a comparison, flow diagram, or analogy side-by-side
-4. Works as a hand-drawn sketch with labeled parts and a bottom caption
+Your job is to read article text and design FIVE distinct visual concepts that each
+illustrate a different angle, section, or key idea from the text. Each concept should:
+1. Capture a DIFFERENT core idea, analogy, or section from the article
+2. Use a relatable real-world metaphor (computers, buildings, nature, everyday objects)
+3. Use a DIFFERENT layout style so the set feels varied and rich
+4. Work as a hand-drawn sketch with labeled parts and a bottom caption
 
-Output ONLY a JSON object with these fields:
-{
-  "concept_title": "short title for the visual",
-  "visual_metaphor": "the core metaphor or analogy being illustrated",
-  "layout": "side-by-side comparison | flow diagram | single scene with annotations | hierarchy",
-  "elements": ["list", "of", "visual", "elements", "to", "draw"],
-  "labels": ["key", "labels", "and", "annotations"],
-  "caption": "The witty bottom caption summarizing the insight",
-  "dalle_prompt": "The complete, detailed DALL-E 3 prompt to generate this image"
-}
+Output ONLY a JSON array (no markdown fences) with exactly 5 objects, each having these fields:
+[
+  {
+    "concept_title": "short title for the visual",
+    "visual_metaphor": "the core metaphor or analogy being illustrated",
+    "layout": "side-by-side comparison | flow diagram | single scene with annotations | hierarchy | table/matrix",
+    "elements": ["list", "of", "visual", "elements", "to", "draw"],
+    "labels": ["key", "labels", "and", "annotations"],
+    "caption": "The witty bottom caption summarizing the insight",
+    "dalle_prompt": "Complete, detailed DALL-E 3 prompt to generate this image"
+  }
+]
 
-The dalle_prompt must be specific about:
-- Exact visual elements and their positions
-- The hand-drawn sketch aesthetic
-- Labels and text to include
-- The bottom caption text
-- The overall scene composition
+IMPORTANT RULES:
+- Each of the 5 concepts must cover a DIFFERENT aspect of the article
+- Vary the layouts: use at least 3 different layout types across the 5
+- Each dalle_prompt must be self-contained and under 4000 characters
+- dalle_prompts must specify the hand-drawn sketch aesthetic on cream paper
+- Include all text labels and the bottom caption in each dalle_prompt
 """
 
 # ── Core functions ─────────────────────────────────────────────────────────────
 
-def analyze_article(text: str, client: anthropic.Anthropic) -> dict:
-    """Use Claude to extract the key visual concept from article text."""
+def analyze_article(text: str, client: anthropic.Anthropic) -> list[dict]:
+    """Use Claude to design 5 distinct visual concepts from article text."""
     response = client.messages.create(
         model="claude-opus-4-6",
-        max_tokens=1024,
+        max_tokens=8192,
         thinking={"type": "adaptive"},
         system=CLAUDE_SYSTEM,
         messages=[
             {
                 "role": "user",
-                "content": f"Design a hand-drawn educational illustration for this article:\n\n{text[:6000]}"
+                "content": f"Design 5 hand-drawn educational illustrations for this article:\n\n{text[:8000]}"
             }
         ]
     )
 
-    # Extract text content (thinking blocks come first)
     raw = next(
         block.text for block in response.content if block.type == "text"
     )
 
-    # Parse JSON from response (handle markdown code blocks)
-    json_match = re.search(r'\{.*\}', raw, re.DOTALL)
-    if not json_match:
-        raise ValueError(f"Claude did not return valid JSON:\n{raw}")
-
     import json
-    return json.loads(json_match.group())
+    json_match = re.search(r'\[.*\]', raw, re.DOTALL)
+    if not json_match:
+        raise ValueError(f"Claude did not return valid JSON array:\n{raw}")
+    concepts = json.loads(json_match.group())
+    if not isinstance(concepts, list) or len(concepts) == 0:
+        raise ValueError("Claude returned an empty or invalid concept list")
+    return concepts[:5]
 
 
 def build_dalle_prompt(concept: dict) -> str:
@@ -137,15 +140,15 @@ def slugify(text: str, max_len: int = 40) -> str:
 
 # ── Main pipeline ──────────────────────────────────────────────────────────────
 
-def generate_article_image(
+def generate_article_images(
     article_text: str,
     output_dir: str = "generated_images",
     verbose: bool = True,
-) -> dict:
+) -> list[dict]:
     """
-    Full pipeline: article text → Claude concept → DALL-E 3 image → saved file.
+    Full pipeline: article text → 5 Claude concepts → 5 DALL-E 3 images → saved files.
 
-    Returns a dict with keys: concept, prompt, url, file_path
+    Returns a list of dicts, each with keys: concept, prompt, url, file_path
     """
     anthropic_key = os.getenv("ANTHROPIC_API_KEY")
     openai_key = os.getenv("OPENAI_API_KEY")
@@ -158,64 +161,44 @@ def generate_article_image(
     claude = anthropic.Anthropic(api_key=anthropic_key)
     oai = OpenAI(api_key=openai_key)
 
-    # Step 1: Claude designs the visual concept
+    # Step 1: Claude designs 5 visual concepts
     if verbose:
-        print("🧠 Analyzing article and designing visual concept...")
-    concept = analyze_article(article_text, claude)
-
-    if verbose:
-        print(f"   Concept: {concept['concept_title']}")
-        print(f"   Metaphor: {concept['visual_metaphor']}")
-        print(f"   Caption: \"{concept['caption']}\"")
-
-    # Step 2: Build the DALL-E prompt
-    prompt = build_dalle_prompt(concept)
+        print("🧠 Analyzing article and designing 5 visual concepts...")
+    concepts = analyze_article(article_text, claude)
 
     if verbose:
-        print("\n🎨 Generating image with DALL-E 3...")
+        for i, c in enumerate(concepts, 1):
+            print(f"   {i}. {c['concept_title']} — {c['visual_metaphor']}")
 
-    # Step 3: Generate image
-    url = generate_image(prompt, oai)
-
-    # Step 4: Save to disk
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    slug = slugify(concept["concept_title"])
-    filename = f"{timestamp}_{slug}.png"
-    output_path = Path(output_dir) / filename
-
-    if verbose:
-        print(f"💾 Saving image to {output_path}...")
-    download_image(url, output_path)
-
-    if verbose:
-        print(f"\n✅ Done! Image saved: {output_path}")
-
-    return {
-        "concept": concept,
-        "prompt": prompt,
-        "url": url,
-        "file_path": str(output_path),
-    }
-
-
-def generate_multiple(
-    article_text: str,
-    count: int = 3,
-    output_dir: str = "generated_images",
-    verbose: bool = True,
-) -> list[dict]:
-    """
-    Generate multiple image variations for the same article.
-    Claude re-analyzes each time to get different angles on the concept.
-    """
+    # Step 2-4: Generate each image
     results = []
-    for i in range(count):
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    for i, concept in enumerate(concepts, 1):
         if verbose:
-            print(f"\n{'='*50}")
-            print(f"  Generating image {i+1}/{count}")
-            print(f"{'='*50}")
-        result = generate_article_image(article_text, output_dir, verbose)
-        results.append(result)
+            print(f"\n🎨 Generating image {i}/{len(concepts)}: {concept['concept_title']}...")
+
+        prompt = build_dalle_prompt(concept)
+        url = generate_image(prompt, oai)
+
+        slug = slugify(concept["concept_title"])
+        filename = f"{timestamp}_{i}_{slug}.png"
+        output_path = Path(output_dir) / filename
+
+        if verbose:
+            print(f"   💾 Saved: {output_path}")
+        download_image(url, output_path)
+
+        results.append({
+            "concept": concept,
+            "prompt": prompt,
+            "url": url,
+            "file_path": str(output_path),
+        })
+
+    if verbose:
+        print(f"\n✅ Done! Generated {len(results)} images.")
+
     return results
 
 
@@ -229,12 +212,6 @@ def main():
     source.add_argument("--text", "-t", help="Article text directly as a string")
     source.add_argument("--file", "-f", help="Path to a text file containing the article")
 
-    parser.add_argument(
-        "--count", "-n",
-        type=int,
-        default=1,
-        help="Number of image variations to generate (default: 1)"
-    )
     parser.add_argument(
         "--output", "-o",
         default="generated_images",
@@ -259,15 +236,11 @@ def main():
 
     verbose = not args.quiet
 
-    # Generate
-    if args.count == 1:
-        result = generate_article_image(article_text, args.output, verbose)
-        print(f"\nSaved: {result['file_path']}")
-    else:
-        results = generate_multiple(article_text, args.count, args.output, verbose)
-        print(f"\nGenerated {len(results)} images:")
-        for r in results:
-            print(f"  {r['file_path']}")
+    # Generate 5 images
+    results = generate_article_images(article_text, args.output, verbose)
+    print(f"\nGenerated {len(results)} images:")
+    for r in results:
+        print(f"  {r['file_path']}")
 
 
 if __name__ == "__main__":

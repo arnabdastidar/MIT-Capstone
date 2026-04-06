@@ -206,6 +206,70 @@
       text-align: center;
     }
 
+    /* ── Result cards ────────────────────────────────────── */
+    .result-card {
+      margin-bottom: 2rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid #e0d8c8;
+    }
+    .result-card:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    .result-card-header {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      margin-bottom: 1rem;
+    }
+    .result-number {
+      background: #2d2d2d;
+      color: #fff;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: .85rem;
+      flex-shrink: 0;
+    }
+    .result-card-title {
+      font-size: 1.05rem;
+      font-weight: 600;
+    }
+
+    .result-image {
+      width: 100%;
+      border-radius: 8px;
+      border: 2px solid #e0d8c8;
+    }
+
+    .result-meta {
+      margin-top: .75rem;
+      display: flex;
+      gap: .75rem;
+      flex-wrap: wrap;
+    }
+    .result-tag {
+      font-size: .8rem;
+      background: #f0ece3;
+      padding: .3rem .7rem;
+      border-radius: 20px;
+      color: #555;
+    }
+
+    .download-single {
+      margin-top: .75rem;
+      font-size: .85rem;
+      background: none;
+      border: 1px solid #ccc;
+      padding: .4rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      color: #555;
+    }
+    .download-single:hover { background: #f0ece3; }
+
     /* ── Error ────────────────────────────────────────────── */
     .error-msg {
       display: none;
@@ -224,7 +288,7 @@
   <span class="logo">&#9999;&#65039;</span>
   <div>
     <h1>Article Image Generator</h1>
-    <p>Paste your article &rarr; get a hand-drawn educational illustration</p>
+    <p>Paste your article &rarr; get 5 hand-drawn educational illustrations</p>
   </div>
 </header>
 
@@ -249,40 +313,21 @@ Example: &quot;A raw LLM is like a CPU with no operating system. The harness —
 
     <div class="progress-bar" id="progress">
       <div class="step" id="step1"><span class="icon">&#9711;</span> Analyzing article with Claude...</div>
-      <div class="step" id="step2"><span class="icon">&#9711;</span> Designing visual concept...</div>
-      <div class="step" id="step3"><span class="icon">&#9711;</span> Generating image with DALL-E 3...</div>
-      <div class="step" id="step4"><span class="icon">&#9711;</span> Saving image...</div>
+      <div class="step" id="step2"><span class="icon">&#9711;</span> Designing 5 visual concepts...</div>
+      <div class="step" id="step3"><span class="icon">&#9711;</span> Generating images with DALL-E 3 (this takes ~1 min)...</div>
+      <div class="step" id="step4"><span class="icon">&#9711;</span> Saving images...</div>
     </div>
 
     <div class="error-msg" id="errorMsg"></div>
   </div>
 
-  <!-- Result -->
+  <!-- Results -->
   <div class="card result" id="resultCard">
-    <h2>&#127912; Generated Illustration</h2>
-    <img class="result-image" id="resultImage" alt="Generated illustration" />
-    <div class="caption-bar" id="resultCaption"></div>
-    <div class="concept-details">
-      <div class="detail-item">
-        <label>Concept</label>
-        <p id="detailTitle"></p>
-      </div>
-      <div class="detail-item">
-        <label>Visual Metaphor</label>
-        <p id="detailMetaphor"></p>
-      </div>
-      <div class="detail-item">
-        <label>Layout</label>
-        <p id="detailLayout"></p>
-      </div>
-      <div class="detail-item">
-        <label>Key Elements</label>
-        <p id="detailElements"></p>
-      </div>
-    </div>
+    <h2>&#127912; Generated Illustrations <span id="resultCount" style="font-weight:400;font-size:.9rem;color:#777;"></span></h2>
+    <div id="resultsContainer"></div>
     <div class="actions" style="margin-top:1.25rem;">
-      <button class="btn-secondary" onclick="downloadResult()">Download Image</button>
-      <button class="btn-secondary" onclick="generate()">Regenerate</button>
+      <button class="btn-secondary" onclick="downloadAll()">Download All Images</button>
+      <button class="btn-secondary" onclick="generate()">Regenerate All</button>
     </div>
   </div>
 
@@ -305,7 +350,7 @@ Tool integrations are the device drivers — they let the agent interact with th
 
 And the agent itself? That's the emergent application — the useful behavior that arises when all these pieces work together. A raw LLM is a CPU with no operating system. The harness is the OS that makes it useful.`;
 
-let lastResult = null;
+let lastResults = [];
 
 function loadExample() {
   document.getElementById('articleText').value = EXAMPLE_TEXT;
@@ -317,6 +362,30 @@ function setStep(n) {
     el.className = 'step' + (i < n ? ' done' : i === n ? ' active' : '');
     el.querySelector('.icon').textContent = i < n ? '\u2713' : i === n ? '\u25CF' : '\u25CB';
   }
+}
+
+function renderResults(images) {
+  const container = document.getElementById('resultsContainer');
+  container.innerHTML = images.map((img, i) => {
+    const c = img.concept;
+    return `
+      <div class="result-card">
+        <div class="result-card-header">
+          <span class="result-number">${i + 1}</span>
+          <span class="result-card-title">${c.concept_title || 'Illustration ' + (i+1)}</span>
+        </div>
+        <img class="result-image" src="${img.image_url}" alt="${c.concept_title || ''}"
+             onclick="window.open('${img.image_url}','_blank')" style="cursor:pointer;" />
+        <div class="caption-bar">${c.caption || ''}</div>
+        <div class="result-meta">
+          <span class="result-tag">${c.layout || ''}</span>
+          <span class="result-tag">${c.visual_metaphor || ''}</span>
+        </div>
+        <button class="download-single" onclick="downloadOne('${img.local_file || img.image_url}', '${(c.concept_title || 'image').replace(/'/g, '')}')">
+          Download this image
+        </button>
+      </div>`;
+  }).join('');
 }
 
 async function generate() {
@@ -332,21 +401,19 @@ async function generate() {
   const errorMsg = document.getElementById('errorMsg');
 
   btn.disabled = true;
-  btn.textContent = 'Generating...';
+  btn.textContent = 'Generating 5 illustrations...';
   progress.classList.add('active');
   resultCard.classList.remove('visible');
   errorMsg.classList.remove('visible');
 
   setStep(1);
 
-  // Simulate step progression (actual work is one API call)
-  const stepTimer = setInterval(() => {
-    const active = document.querySelector('.step.active');
-    if (active) {
-      const id = parseInt(active.id.replace('step', ''));
-      if (id < 3) setStep(id + 1);
-    }
-  }, 3000);
+  // Step progression — generating 5 images takes ~60-90s
+  const steps = [
+    { step: 2, delay: 5000 },
+    { step: 3, delay: 12000 },
+  ];
+  const timers = steps.map(s => setTimeout(() => setStep(s.step), s.delay));
 
   try {
     const resp = await fetch('/generate', {
@@ -355,7 +422,7 @@ async function generate() {
       body: JSON.stringify({ text }),
     });
 
-    clearInterval(stepTimer);
+    timers.forEach(clearTimeout);
     const data = await resp.json();
 
     if (!resp.ok) {
@@ -364,25 +431,18 @@ async function generate() {
 
     setStep(5); // all done
 
-    lastResult = data;
-
-    // Show result
-    document.getElementById('resultImage').src = data.image_url;
-    document.getElementById('resultCaption').textContent = data.concept.caption || '';
-    document.getElementById('detailTitle').textContent = data.concept.concept_title || '';
-    document.getElementById('detailMetaphor').textContent = data.concept.visual_metaphor || '';
-    document.getElementById('detailLayout').textContent = data.concept.layout || '';
-    document.getElementById('detailElements').textContent = (data.concept.elements || []).join(', ');
+    lastResults = data.images || [];
+    document.getElementById('resultCount').textContent = `(${lastResults.length} images)`;
+    renderResults(lastResults);
     resultCard.classList.add('visible');
 
-    // Refresh gallery
     loadGallery();
   } catch (err) {
-    clearInterval(stepTimer);
+    timers.forEach(clearTimeout);
     showError(err.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Generate Illustration';
+    btn.textContent = 'Generate Illustrations';
     setTimeout(() => progress.classList.remove('active'), 2000);
   }
 }
@@ -393,12 +453,18 @@ function showError(msg) {
   el.classList.add('visible');
 }
 
-function downloadResult() {
-  if (!lastResult) return;
+function downloadOne(url, name) {
   const a = document.createElement('a');
-  a.href = lastResult.local_file || lastResult.image_url;
-  a.download = 'illustration.png';
+  a.href = url;
+  a.download = name.replace(/[^a-z0-9_-]/gi, '_') + '.png';
   a.click();
+}
+
+function downloadAll() {
+  lastResults.forEach((img, i) => {
+    const name = (img.concept.concept_title || 'image_' + (i+1));
+    setTimeout(() => downloadOne(img.local_file || img.image_url, name), i * 500);
+  });
 }
 
 async function loadGallery() {

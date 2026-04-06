@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Article Image Generator</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #f5f0e8;
+      color: #2d2d2d;
+      min-height: 100vh;
+    }
+
+    /* ── Header ──────────────────────────────────────────── */
+    header {
+      background: #fff;
+      border-bottom: 2px solid #e0d8c8;
+      padding: 1.25rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header .logo {
+      font-size: 2rem;
+      line-height: 1;
+    }
+    header h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+    }
+    header p {
+      font-size: 0.85rem;
+      color: #777;
+    }
+
+    /* ── Layout ──────────────────────────────────────────── */
+    .container {
+      max-width: 1100px;
+      margin: 2rem auto;
+      padding: 0 1.5rem;
+    }
+
+    /* ── Input card ──────────────────────────────────────── */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.06);
+      padding: 2rem;
+      margin-bottom: 2rem;
+    }
+    .card h2 {
+      font-size: 1.1rem;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 220px;
+      border: 2px solid #e0d8c8;
+      border-radius: 8px;
+      padding: 1rem;
+      font-size: 0.95rem;
+      font-family: inherit;
+      resize: vertical;
+      transition: border-color .2s;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: #6b8afd;
+    }
+
+    .actions {
+      margin-top: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 0.75rem 2rem;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    button:active { transform: scale(.97); }
+
+    .btn-primary {
+      background: #2d2d2d;
+      color: #fff;
+    }
+    .btn-primary:hover { background: #444; }
+    .btn-primary:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: #e8e2d6;
+      color: #2d2d2d;
+    }
+    .btn-secondary:hover { background: #ddd6c4; }
+
+    .status {
+      font-size: 0.9rem;
+      color: #777;
+    }
+
+    /* ── Progress steps ──────────────────────────────────── */
+    .progress-bar {
+      display: none;
+      margin-top: 1.5rem;
+      padding: 1rem 1.25rem;
+      background: #faf8f4;
+      border-radius: 8px;
+      border: 1px solid #e0d8c8;
+    }
+    .progress-bar.active { display: block; }
+
+    .step {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      padding: .4rem 0;
+      font-size: .9rem;
+      color: #999;
+      transition: color .3s;
+    }
+    .step.active { color: #2d2d2d; font-weight: 600; }
+    .step.done { color: #4caf50; }
+    .step .icon { width: 1.4rem; text-align: center; }
+
+    /* ── Result ──────────────────────────────────────────── */
+    .result { display: none; }
+    .result.visible { display: block; }
+
+    .result-image {
+      width: 100%;
+      border-radius: 8px;
+      border: 2px solid #e0d8c8;
+    }
+
+    .concept-details {
+      margin-top: 1.25rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 640px) {
+      .concept-details { grid-template-columns: 1fr; }
+    }
+
+    .detail-item {
+      background: #faf8f4;
+      border-radius: 8px;
+      padding: 1rem;
+    }
+    .detail-item label {
+      display: block;
+      font-size: .75rem;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: #999;
+      margin-bottom: .3rem;
+    }
+    .detail-item p { font-size: .95rem; }
+
+    .caption-bar {
+      margin-top: 1rem;
+      padding: 1rem 1.25rem;
+      background: #2d2d2d;
+      color: #f5f0e8;
+      border-radius: 8px;
+      font-style: italic;
+      text-align: center;
+      font-size: 1rem;
+    }
+
+    /* ── Gallery ─────────────────────────────────────────── */
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1.25rem;
+    }
+    .gallery-grid img {
+      width: 100%;
+      border-radius: 8px;
+      border: 2px solid #e0d8c8;
+      cursor: pointer;
+      transition: transform .15s;
+    }
+    .gallery-grid img:hover { transform: scale(1.02); }
+    .gallery-empty {
+      color: #999;
+      font-style: italic;
+      padding: 2rem;
+      text-align: center;
+    }
+
+    /* ── Error ────────────────────────────────────────────── */
+    .error-msg {
+      display: none;
+      margin-top: 1rem;
+      padding: 1rem;
+      background: #fde8e8;
+      color: #c0392b;
+      border-radius: 8px;
+    }
+    .error-msg.visible { display: block; }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="logo">&#9999;&#65039;</span>
+  <div>
+    <h1>Article Image Generator</h1>
+    <p>Paste your article &rarr; get a hand-drawn educational illustration</p>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Input -->
+  <div class="card">
+    <h2>&#128196; Paste your article or concept</h2>
+    <textarea id="articleText" placeholder="Paste your article, blog post, or concept description here...
+
+Example: &quot;A raw LLM is like a CPU with no operating system. The harness — the orchestration loop, tools, memory, and context management — is the OS that makes the raw intelligence useful. Just as an OS manages hardware resources and provides an interface for applications, the agent harness manages the LLM's context window, connects it to external tools, and orchestrates multi-step workflows.&quot;"></textarea>
+
+    <div class="actions">
+      <button class="btn-primary" id="generateBtn" onclick="generate()">
+        Generate Illustration
+      </button>
+      <button class="btn-secondary" onclick="loadExample()">
+        Load Example
+      </button>
+      <span class="status" id="statusText"></span>
+    </div>
+
+    <div class="progress-bar" id="progress">
+      <div class="step" id="step1"><span class="icon">&#9711;</span> Analyzing article with Claude...</div>
+      <div class="step" id="step2"><span class="icon">&#9711;</span> Designing visual concept...</div>
+      <div class="step" id="step3"><span class="icon">&#9711;</span> Generating image with DALL-E 3...</div>
+      <div class="step" id="step4"><span class="icon">&#9711;</span> Saving image...</div>
+    </div>
+
+    <div class="error-msg" id="errorMsg"></div>
+  </div>
+
+  <!-- Result -->
+  <div class="card result" id="resultCard">
+    <h2>&#127912; Generated Illustration</h2>
+    <img class="result-image" id="resultImage" alt="Generated illustration" />
+    <div class="caption-bar" id="resultCaption"></div>
+    <div class="concept-details">
+      <div class="detail-item">
+        <label>Concept</label>
+        <p id="detailTitle"></p>
+      </div>
+      <div class="detail-item">
+        <label>Visual Metaphor</label>
+        <p id="detailMetaphor"></p>
+      </div>
+      <div class="detail-item">
+        <label>Layout</label>
+        <p id="detailLayout"></p>
+      </div>
+      <div class="detail-item">
+        <label>Key Elements</label>
+        <p id="detailElements"></p>
+      </div>
+    </div>
+    <div class="actions" style="margin-top:1.25rem;">
+      <button class="btn-secondary" onclick="downloadResult()">Download Image</button>
+      <button class="btn-secondary" onclick="generate()">Regenerate</button>
+    </div>
+  </div>
+
+  <!-- Gallery -->
+  <div class="card">
+    <h2>&#128444;&#65039; Previously Generated</h2>
+    <div class="gallery-grid" id="gallery">
+      <p class="gallery-empty">No images generated yet. Create your first one above!</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const EXAMPLE_TEXT = `An LLM agent is like a computer — same architecture, new substrate.
+
+The LLM model weights are the CPU — raw processing power that does the actual computation. The context window is RAM — fast, limited working memory that holds what the model is currently thinking about. Vector databases and long-term storage are the hard disk — slower but persistent memory for things the agent needs to recall later.
+
+Tool integrations are the device drivers — they let the agent interact with the outside world (APIs, databases, file systems). The agent harness is the operating system — it orchestrates everything, manages resources, handles permissions, and provides the interface between the raw LLM and useful applications.
+
+And the agent itself? That's the emergent application — the useful behavior that arises when all these pieces work together. A raw LLM is a CPU with no operating system. The harness is the OS that makes it useful.`;
+
+let lastResult = null;
+
+function loadExample() {
+  document.getElementById('articleText').value = EXAMPLE_TEXT;
+}
+
+function setStep(n) {
+  for (let i = 1; i <= 4; i++) {
+    const el = document.getElementById('step' + i);
+    el.className = 'step' + (i < n ? ' done' : i === n ? ' active' : '');
+    el.querySelector('.icon').textContent = i < n ? '\u2713' : i === n ? '\u25CF' : '\u25CB';
+  }
+}
+
+async function generate() {
+  const text = document.getElementById('articleText').value.trim();
+  if (!text) {
+    showError('Please paste some article text first.');
+    return;
+  }
+
+  const btn = document.getElementById('generateBtn');
+  const progress = document.getElementById('progress');
+  const resultCard = document.getElementById('resultCard');
+  const errorMsg = document.getElementById('errorMsg');
+
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+  progress.classList.add('active');
+  resultCard.classList.remove('visible');
+  errorMsg.classList.remove('visible');
+
+  setStep(1);
+
+  // Simulate step progression (actual work is one API call)
+  const stepTimer = setInterval(() => {
+    const active = document.querySelector('.step.active');
+    if (active) {
+      const id = parseInt(active.id.replace('step', ''));
+      if (id < 3) setStep(id + 1);
+    }
+  }, 3000);
+
+  try {
+    const resp = await fetch('/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+
+    clearInterval(stepTimer);
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      throw new Error(data.error || 'Generation failed');
+    }
+
+    setStep(5); // all done
+
+    lastResult = data;
+
+    // Show result
+    document.getElementById('resultImage').src = data.image_url;
+    document.getElementById('resultCaption').textContent = data.concept.caption || '';
+    document.getElementById('detailTitle').textContent = data.concept.concept_title || '';
+    document.getElementById('detailMetaphor').textContent = data.concept.visual_metaphor || '';
+    document.getElementById('detailLayout').textContent = data.concept.layout || '';
+    document.getElementById('detailElements').textContent = (data.concept.elements || []).join(', ');
+    resultCard.classList.add('visible');
+
+    // Refresh gallery
+    loadGallery();
+  } catch (err) {
+    clearInterval(stepTimer);
+    showError(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Generate Illustration';
+    setTimeout(() => progress.classList.remove('active'), 2000);
+  }
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg;
+  el.classList.add('visible');
+}
+
+function downloadResult() {
+  if (!lastResult) return;
+  const a = document.createElement('a');
+  a.href = lastResult.local_file || lastResult.image_url;
+  a.download = 'illustration.png';
+  a.click();
+}
+
+async function loadGallery() {
+  try {
+    const resp = await fetch('/gallery');
+    const files = await resp.json();
+    const grid = document.getElementById('gallery');
+    if (files.length === 0) {
+      grid.innerHTML = '<p class="gallery-empty">No images generated yet.</p>';
+    } else {
+      grid.innerHTML = files.map(f =>
+        `<img src="${f}" alt="Generated illustration" onclick="window.open('${f}','_blank')" />`
+      ).join('');
+    }
+  } catch (e) {
+    // silently ignore gallery errors
+  }
+}
+
+// Load gallery on page load
+loadGallery();
+</script>
+
+</body>
+</html>
